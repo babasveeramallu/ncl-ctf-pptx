@@ -1,53 +1,60 @@
-# CTF Master Toolkit
+# PPTX Password Crack Helper
 
-Phase 1A scaffold for a local-first CTF toolkit (Textual + FastAPI + SQLite).
+This repository is focused on one workflow: cracking password-protected PowerPoint files using Python orchestration around office2john and hashcat.
 
-## Quickstart
+Main files:
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
-   - `pip install -r requirements.txt`
-3. Copy config template:
-   - `copy config.yml.example config.yml` (Windows)
-4. Start backend:
-   - `uvicorn backend.main:app --host 127.0.0.1 --port 8765 --reload`
-5. Launch TUI:
-   - `python ctf.py`
+- `pptx_cracking_python.py`: command-line helper for extraction and cracking.
+- `office2john.py`: extracts Office password hashes from encrypted files.
 
-## Python-Only PPTX Cracking Workflow
+## Requirements
 
-Use `pptx_cracking_python.py` when you want a single, standalone Python entrypoint
-for Office/PPTX hash extraction and cracking.
+1. Python 3.10+
+2. hashcat installed or available at `tools/hashcat-6.2.6/hashcat-6.2.6/hashcat.exe`
+3. A wordlist file (example: `rockyou_full.txt`)
 
-What this script does:
+## Commands
 
-- Extracts `$office$` hash from a password-protected `.pptx` using `office2john.py`.
-- Writes the extracted hash to a file (`office_hash.txt` by default).
-- Runs `hashcat.exe` through Python `subprocess` for dictionary attacks.
+### 1) Extract hash from PPTX
 
-Hashcat mode mapping used by the script:
+```powershell
+python .\pptx_cracking_python.py extract --pptx ".\protected.pptx"
+```
 
-- Office 2007: `9400`
-- Office 2010: `9500`
-- Office 2013: `9600`
+Optional:
 
-Examples:
+```powershell
+python .\pptx_cracking_python.py extract --pptx ".\protected.pptx" --out ".\office_hash.txt" --timeout 90
+```
 
-1. Extract hash only:
-   - `python pptx_cracking_python.py extract --pptx "protected.pptx" --out "office_hash.txt"`
-2. One-shot extract + crack:
-   - `python pptx_cracking_python.py run --pptx "protected.pptx" --wordlist "rockyou_full.txt"`
+### 2) Extract and crack in one run
 
-Notes:
+```powershell
+python .\pptx_cracking_python.py run --pptx ".\protected.pptx" --wordlist ".\rockyou_full.txt"
+```
 
-- If hashcat is not in the bundled path, pass `--hashcat-path "path\\to\\hashcat.exe"`.
-- Optional runtime cap: add `--runtime 600`.
-- Optional potfile location: add `--potfile "_office_tmp.pot"`.
+Optional:
 
-## Included in this scaffold
+```powershell
+python .\pptx_cracking_python.py run --pptx ".\protected.pptx" --wordlist ".\rockyou_full.txt" --runtime 600 --potfile ".\_office_tmp.pot"
+```
 
-- Global API response envelopes.
-- X-Processing-Time-Ms response header middleware.
-- Startup tool availability check exposed via `/api/v1/health`.
-- SQLite schema at `backend/db/schema.sql`.
-- Endpoint stubs under `/api/v1/*` returning 501 for unimplemented routes.
+If hashcat is not in the default bundled location, set it explicitly:
+
+```powershell
+python .\pptx_cracking_python.py run --pptx ".\protected.pptx" --wordlist ".\rockyou_full.txt" --hashcat-path "C:\path\to\hashcat.exe"
+```
+
+## Hashcat Modes Used
+
+- Office 2007 -> `-m 9400`
+- Office 2010 -> `-m 9500`
+- Office 2013 -> `-m 9600`
+
+The script detects the version from the extracted `$office$` hash and applies the matching mode automatically.
+
+## Troubleshooting
+
+1. If extraction fails, confirm the file is encrypted and ends with `.pptx`.
+2. If hashcat fails, verify your GPU/OpenCL setup or run on a supported system.
+3. If no password is found, try a larger or more targeted wordlist.
