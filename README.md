@@ -35,9 +35,7 @@ Examples:
 
 1. Extract hash only:
    - `python pptx_cracking_python.py extract --pptx "protected.pptx" --out "office_hash.txt"`
-2. Crack using an existing hash file:
-   - `python pptx_cracking_python.py crack --hash-file "office_hash.txt" --wordlist "rockyou_full.txt" --version 2013`
-3. One-shot extract + crack:
+2. One-shot extract + crack:
    - `python pptx_cracking_python.py run --pptx "protected.pptx" --wordlist "rockyou_full.txt"`
 
 Notes:

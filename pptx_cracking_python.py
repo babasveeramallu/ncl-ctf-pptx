@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Python-only PPTX cracking workflow helper.
+"""PPTX-only cracking helper.
 
-This script keeps the Office/PPTX cracking flow in one file:
-1) Extract an Office hash from a protected PPTX using office2john.py
-2) Save the hash to a file (hashcat/john-compatible)
-3) Run hashcat dictionary attack from Python via subprocess
+This script is intentionally focused on one workflow:
+1) Read a protected .pptx
+2) Extract a $office$ hash via office2john.py
+3) Save hash output to a file
+4) Optionally run hashcat dictionary attack
 
-Usage examples:
-  python pptx_cracking_python.py extract --pptx "protected.pptx"
-  python pptx_cracking_python.py crack --hash-file office_hash.txt --wordlist rockyou_full.txt
-  python pptx_cracking_python.py run --pptx "protected.pptx" --wordlist rockyou_full.txt
+Examples:
+    python pptx_cracking_python.py extract --pptx "protected.pptx"
+    python pptx_cracking_python.py run --pptx "protected.pptx" --wordlist "rockyou_full.txt"
 """
 
 from __future__ import annotations
@@ -21,11 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 
-OFFICE_TO_HASHCAT_MODE = {
-    "2007": 9400,
-    "2010": 9500,
-    "2013": 9600,
-}
+OFFICE_TO_HASHCAT_MODE = {"2007": 9400, "2010": 9500, "2013": 9600}
 
 
 def repo_root() -> Path:
@@ -46,9 +42,15 @@ def bundled_hashcat() -> Optional[Path]:
     return None
 
 
-def extract_office_hash(pptx_path: Path, timeout_s: int = 90) -> tuple[str, str]:
+def _require_pptx_file(pptx_path: Path) -> None:
     if not pptx_path.exists() or not pptx_path.is_file():
         raise FileNotFoundError(f"PPTX file not found: {pptx_path}")
+    if pptx_path.suffix.lower() != ".pptx":
+        raise ValueError(f"Expected a .pptx file, got: {pptx_path.name}")
+
+
+def extract_office_hash(pptx_path: Path, timeout_s: int = 90) -> tuple[str, str]:
+    _require_pptx_file(pptx_path)
 
     cmd = [sys.executable, str(bundled_office2john()), str(pptx_path)]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, check=False)
@@ -83,7 +85,6 @@ def crack_hash_with_hashcat(
     hashcat_path: Optional[Path] = None,
     potfile: Optional[Path] = None,
     runtime: Optional[int] = None,
-    extra_args: Optional[list[str]] = None,
 ) -> int:
     if not hash_file.exists():
         raise FileNotFoundError(f"Hash file not found: {hash_file}")
@@ -118,29 +119,19 @@ def crack_hash_with_hashcat(
         cmd.extend(["--potfile-path", str(potfile)])
     if runtime and runtime > 0:
         cmd.extend(["--runtime", str(runtime)])
-    if extra_args:
-        cmd.extend(extra_args)
-
     print("Running:", " ".join(cmd))
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Python-only helper for PPTX Office hash extraction + cracking")
+    parser = argparse.ArgumentParser(description="PPTX-only hash extraction and cracking helper")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_extract = sub.add_parser("extract", help="Extract Office hash from PPTX")
     p_extract.add_argument("--pptx", required=True, type=Path, help="Path to protected .pptx file")
     p_extract.add_argument("--out", type=Path, default=Path("office_hash.txt"), help="Output hash file")
-
-    p_crack = sub.add_parser("crack", help="Run hashcat on an existing Office hash")
-    p_crack.add_argument("--hash-file", required=True, type=Path, help="Path to file containing $office$ hash")
-    p_crack.add_argument("--wordlist", required=True, type=Path, help="Wordlist path")
-    p_crack.add_argument("--version", choices=sorted(OFFICE_TO_HASHCAT_MODE.keys()), default="2013")
-    p_crack.add_argument("--hashcat-path", type=Path, default=None, help="Optional hashcat.exe path")
-    p_crack.add_argument("--potfile", type=Path, default=Path("_office_tmp.pot"), help="Potfile path")
-    p_crack.add_argument("--runtime", type=int, default=0, help="Runtime limit in seconds (0 = no limit)")
+    p_extract.add_argument("--timeout", type=int, default=90, help="Extraction timeout in seconds")
 
     p_run = sub.add_parser("run", help="Extract hash then crack in one command")
     p_run.add_argument("--pptx", required=True, type=Path, help="Path to protected .pptx file")
@@ -149,31 +140,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--hashcat-path", type=Path, default=None, help="Optional hashcat.exe path")
     p_run.add_argument("--potfile", type=Path, default=Path("_office_tmp.pot"), help="Potfile path")
     p_run.add_argument("--runtime", type=int, default=0, help="Runtime limit in seconds (0 = no limit)")
+    p_run.add_argument("--timeout", type=int, default=90, help="Extraction timeout in seconds")
 
     return parser
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
-    office_hash, version = extract_office_hash(args.pptx)
+    office_hash, version = extract_office_hash(args.pptx, timeout_s=args.timeout)
     out = write_hash_file(office_hash, args.out)
     print(f"[OK] Extracted Office {version} hash")
     print(f"[OK] Wrote hash file: {out}")
     return 0
 
 
-def cmd_crack(args: argparse.Namespace) -> int:
-    return crack_hash_with_hashcat(
-        hash_file=args.hash_file,
-        wordlist=args.wordlist,
-        version=args.version,
-        hashcat_path=args.hashcat_path,
-        potfile=args.potfile,
-        runtime=args.runtime,
-    )
-
-
 def cmd_run(args: argparse.Namespace) -> int:
-    office_hash, version = extract_office_hash(args.pptx)
+    office_hash, version = extract_office_hash(args.pptx, timeout_s=args.timeout)
     out = write_hash_file(office_hash, args.out)
     print(f"[OK] Extracted Office {version} hash")
     print(f"[OK] Wrote hash file: {out}")
@@ -194,8 +175,6 @@ def main() -> int:
 
     if args.command == "extract":
         return cmd_extract(args)
-    if args.command == "crack":
-        return cmd_crack(args)
     if args.command == "run":
         return cmd_run(args)
 
